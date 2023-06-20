@@ -4,3 +4,9 @@
 [submodule "LzyLog"]
 	path = LzyLog
 	url = https://github.com/etaaquarids/LzyLog.git
+[submodule "LzyHttp"]
+	path = LzyHttp
+	url = https://github.com/etaaquarids/LzyHttp.git
+[submodule "LzyCoroutine"]
+	path = LzyCoroutine
+	url = https://github.com/etaaquarids/LzyCoroutine.git
