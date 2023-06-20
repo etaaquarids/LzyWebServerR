@@ -1,84 +1,17 @@
 ﻿// LzyServer.cpp: 定义应用程序的入口点。
 //
 
-#include "../LzyAsyncNetIo/LzyAsyncNetIo/header/LzyAsyncNet.h"
-#include "../LzyLog/LzyLog.hpp"
+#include "LzyAsyncNetIo/LzyAsyncNetIo/header/LzyAsyncNet.h"
+#include "LzyLog/LzyLog.hpp"
+#include "LzyHttp/LzyHttp.hpp"
+#include "LzyCoroutine/LzyCoroutine.hpp"
+
 #include <atomic>
 auto logger = Lzy::Log::Logger<Lzy::Log::Outter::Console>::get_instance();
-
 using namespace std::literals::string_literals;
-struct Task {
-    struct promise_type {
-        promise_type() {
-            auto handle = std::coroutine_handle<promise_type>::from_promise(*this);
-            logger.debug("promise_type create handle:", *(int*)&(handle));
-        }
-        promise_type(promise_type&& v) = delete;
-        ~promise_type() {
-            auto handle = std::coroutine_handle<promise_type>::from_promise(*this);
-            logger.debug("promise_type deleted handle:", *(int*)&(handle));
-            
-            logger.debug("func == nullptr:", func.operator bool());
-        }
-        std::function<void()> func{ [&]() { logger.debug("init_func"); } };
-        std::suspend_always initial_suspend() {
-            auto handle = std::coroutine_handle<promise_type>::from_promise(*this);
-            logger.debug("initial_suspend handle:", *(int*)&(handle));
-            return {};
-        };
-        std::suspend_never final_suspend() noexcept {
-            auto handle = std::coroutine_handle<promise_type>::from_promise(*this);
-            logger.debug("final_suspend handle:", *(int*)&(handle));
-            func();
-            logger.debug("finnal resumed handle:", *(int*)&(handle));
-            return {};
-        };
-        Task get_return_object() {
-            return Task{ std::coroutine_handle<promise_type>::from_promise(*this) };
-        }
-        void return_void() {
-            logger.debug("return_void");
-        }
-        void unhandled_exception() {
-            logger.debug("unhandled_exception");
-        };
-    };
 
-    Task(std::coroutine_handle<promise_type> handle) {
-        _handle = handle;
-        logger.debug("task create handle:", *(int*)&(_handle));
-    }
-    Task(Task&& task):_handle(std::exchange(task._handle, {})) {
-        logger.debug("task moved from handle:", *(int*)&(_handle));
-        logger.debug("to handle:", *(int*)&(task._handle));
-    }
-   
-    void then(std::function<void()>&& functor) {
-        _handle.promise().func = std::move(functor);
-    }
-    std::coroutine_handle<promise_type> _handle;
-};
-struct Join {
-    Join(Task&& task):task { std::move(task) } {
-    }
-    bool await_ready() {
-        return false;
-    }
-    void await_suspend(std::coroutine_handle<> handle) {
-        logger.debug("await_suspend handle:", *(int*)&handle);
-        // handle is not ptr, pass by value
-        task.then([handle]() {
-            logger.debug("Join resume handle:", *(int*)&handle);
-            handle.resume(); 
-            });
-        task._handle.resume();
-    }
-    void await_resume() {
-        return;
-    }
-    Task task;
-};
-Task Echo(SOCKET socket, std::array<char, 952> buffer) {
+Lzy::Coroutine::Task<bool> Echo(SOCKET socket, std::array<char, 952> buffer) {
+    logger.info("recvd:\n", buffer.data());
     while (true) {
         
         if (auto error = co_await Lzy::Async::send(socket, buffer); error != 0) {
@@ -87,21 +20,31 @@ Task Echo(SOCKET socket, std::array<char, 952> buffer) {
         if (auto res = co_await Lzy::Async::recv(socket, buffer); res == -1) {
             break;
         }
-        logger.info("recvd:", buffer.data());
+        logger.info("recvd:\n", buffer.data());
         if (buffer.data()[0] == 'q') {
             break;
         }
     }
     //co_await Lzy::Async::recv(socket, buffer);
-    co_return;
+    co_return true;
 }
 
-Task HTTP(SOCKET socket, std::span<char> buffer) {
-   
-    co_return;
+Lzy::Coroutine::Task<bool> HTTP(SOCKET socket, std::span<char> buffer) {
+    Lzy::Http::Request request;
+    Lzy::Http::Response response;
+    if (!request.parser({ buffer.begin(), buffer.end() })) {
+        logger.info("not Http");
+        co_return false;
+    }
+    response.content = request.content;
+    auto response_buffer = response.to_string();
+    if (auto error = co_await Lzy::Async::send(socket, response_buffer); error != 0) {
+        co_return false;
+    }
+    co_return true;
 }
 
-Task socket_listener(std::atomic<size_t>& numOfAcceptor) {
+Lzy::Coroutine::Task<> socket_listener(std::atomic<size_t>& numOfAcceptor) {
     using namespace std::literals::chrono_literals;
     logger.info("listening unit start");
     std::array<char, 952> buffer{};
@@ -110,10 +53,10 @@ Task socket_listener(std::atomic<size_t>& numOfAcceptor) {
     while (true)
     {
         numOfAcceptor++;
-        logger.info("now accept = ", numOfAcceptor);
+        //logger.info("now accept = ", numOfAcceptor);
         auto socket = co_await Lzy::Async::accept();
         numOfAcceptor--;
-        logger.info("now accept = ", numOfAcceptor);
+        //logger.info("now accept = ", numOfAcceptor);
         if (numOfAcceptor == 0) {
             logger.info("listening unit added");
             auto task = socket_listener(numOfAcceptor);
@@ -126,8 +69,16 @@ Task socket_listener(std::atomic<size_t>& numOfAcceptor) {
             break;
         }
         else {
-            logger.info("recvd:", buffer.data());
-            co_await Join(HTTP(socket, buffer));
+       
+            std::vector<Lzy::Coroutine::Task<bool>> tasks;
+            tasks.reserve(2);
+            tasks.emplace_back(HTTP(socket, buffer));
+            tasks.emplace_back(Echo(socket, buffer));
+            for (bool finished; auto & task : tasks) {
+                finished = co_await Lzy::Coroutine::Join(std::move(task));
+                if (finished) break;
+            }
+              
         }
        
         closesocket(socket);

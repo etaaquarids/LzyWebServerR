@@ -6,4 +6,6 @@ cmake_minimum_required (VERSION 3.8)
 project ("LzyServer")
 
 # 包含子项目。
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_subdirectory ("LzyServer")
+
