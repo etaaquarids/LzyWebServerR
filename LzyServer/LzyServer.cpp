@@ -11,7 +11,7 @@ auto logger = Lzy::Log::Logger<Lzy::Log::Outter::Console>::get_instance();
 using namespace std::literals::string_literals;
 
 Lzy::Coroutine::Task<bool> Echo(SOCKET socket, std::array<char, 952> buffer) {
-    logger.info("recvd:\n", buffer.data());
+    logger.info("Echo recvd:\n", buffer.data());
     while (true) {
         
         if (auto error = co_await Lzy::Async::send(socket, buffer); error != 0) {
@@ -20,7 +20,7 @@ Lzy::Coroutine::Task<bool> Echo(SOCKET socket, std::array<char, 952> buffer) {
         if (auto res = co_await Lzy::Async::recv(socket, buffer); res == -1) {
             break;
         }
-        logger.info("recvd:\n", buffer.data());
+        //logger.info("recvd:\n", buffer.data());
         if (buffer.data()[0] == 'q') {
             break;
         }
@@ -32,6 +32,7 @@ Lzy::Coroutine::Task<bool> Echo(SOCKET socket, std::array<char, 952> buffer) {
 Lzy::Coroutine::Task<bool> HTTP(SOCKET socket, std::span<char> buffer) {
     Lzy::Http::Request request;
     Lzy::Http::Response response;
+    response.headers = { "Accept:*","" };
     if (!request.parser({ buffer.begin(), buffer.end() })) {
         logger.info("not Http");
         co_return false;
@@ -41,6 +42,10 @@ Lzy::Coroutine::Task<bool> HTTP(SOCKET socket, std::span<char> buffer) {
     if (auto error = co_await Lzy::Async::send(socket, response_buffer); error != 0) {
         co_return false;
     }
+    co_return true;
+}
+
+Lzy::Coroutine::Task<bool> RPC(SOCKET socket, std::span<char> buffer) {
     co_return true;
 }
 
