@@ -32,11 +32,16 @@ Lzy::Coroutine::Task<bool> Echo(SOCKET socket, std::array<char, 952> buffer) {
 Lzy::Coroutine::Task<bool> HTTP(SOCKET socket, std::span<char> buffer) {
     Lzy::Http::Request request;
     Lzy::Http::Response response;
-    response.headers = { "Accept:*","" };
+   
+    
     if (!request.parser({ buffer.begin(), buffer.end() })) {
         logger.info("not Http");
         co_return false;
     }
+    response.headers = { "Access-Control-Allow-Origin: *", "Access-Control-Max-Age: 1728000" };
+    response.head.version = 1.1;
+    response.head.statusCode = 200;
+    response.head.comment = "ok";
     response.content = request.content;
     auto response_buffer = response.to_string();
     if (auto error = co_await Lzy::Async::send(socket, response_buffer); error != 0) {
