@@ -1,6 +1,3 @@
-[submodule "LzyAsyncNetIo"]
-	path = LzyAsyncNetIo
-	url = https://github.com/etaaquarids/LzyAsyncNetIo.git
 [submodule "LzyLog"]
 	path = LzyLog
 	url = https://github.com/etaaquarids/LzyLog.git
@@ -10,3 +7,9 @@
 [submodule "LzyCoroutine"]
 	path = LzyCoroutine
 	url = https://github.com/etaaquarids/LzyCoroutine.git
+[submodule "LzyAsyncIO"]
+	path = LzyAsyncIO
+	url = https://github.com/etaaquarids/LzyAsyncIO.git
+[submodule "LzyUtility"]
+	path = LzyUtility
+	url = https://github.com/etaaquarids/LzyUtility.git
