@@ -1,7 +1,7 @@
 ﻿// LzyServer.cpp: 定义应用程序的入口点。
 //
 
-#include "LzyAsyncNetIo/LzyAsyncNetIo/header/LzyAsyncNet.h"
+#include "LzyAsyncIO/LzyAsyncIO.hpp"
 #include "LzyLog/LzyLog.hpp"
 #include "LzyHttp/LzyHttp.hpp"
 #include "LzyCoroutine/LzyCoroutine.hpp"
@@ -11,7 +11,7 @@ auto logger = Lzy::Log::Logger<Lzy::Log::Outter::Console>::get_instance();
 using namespace std::literals::string_literals;
 
 Lzy::Coroutine::Task<bool> Echo(SOCKET socket, std::array<char, 952> buffer) {
-    logger.info("Echo recvd:\n", buffer.data());
+    logger.info("Echo recvd:", buffer.data());
     while (true) {
         
         if (auto error = co_await Lzy::Async::send(socket, buffer); error != 0) {
@@ -20,6 +20,7 @@ Lzy::Coroutine::Task<bool> Echo(SOCKET socket, std::array<char, 952> buffer) {
         if (auto res = co_await Lzy::Async::recv(socket, buffer); res == -1) {
             break;
         }
+        logger.info("Echo recvd:", buffer.data());
         //logger.info("recvd:\n", buffer.data());
         if (buffer.data()[0] == 'q') {
             break;
@@ -42,7 +43,16 @@ Lzy::Coroutine::Task<bool> HTTP(SOCKET socket, std::span<char> buffer) {
     response.head.version = 1.1;
     response.head.statusCode = 200;
     response.head.comment = "ok";
+    if (request.head.url.find(".html") != std::string::npos) {
+        response.headers.push_back("Content-Type: text/html");
+    }
     response.content = request.content;
+    std::filesystem::path path = std::filesystem::path{ "C:\\Users\\15940\\Desktop\\毕业\\HTML" } / request.head.url;
+    std::string content;
+    content.reserve(std::filesystem::file_size(path));
+    std::ifstream file(path);
+    file.read(content.data(), std::filesystem::file_size(path));
+    response.content = content;
     auto response_buffer = response.to_string();
     if (auto error = co_await Lzy::Async::send(socket, response_buffer); error != 0) {
         co_return false;
@@ -84,6 +94,7 @@ Lzy::Coroutine::Task<> socket_listener(std::atomic<size_t>& numOfAcceptor) {
             tasks.reserve(2);
             tasks.emplace_back(HTTP(socket, buffer));
             tasks.emplace_back(Echo(socket, buffer));
+            //tasks.emplace_back(Echo(socket, buffer));
             for (bool finished; auto & task : tasks) {
                 finished = co_await Lzy::Coroutine::Join(std::move(task));
                 if (finished) break;
@@ -105,7 +116,8 @@ int main()
     using namespace Lzy::Log::Formatter;
     logger["console"].first.level = Lzy::Log::Level::error | Lzy::Log::Level::info | Lzy::Log::Level::error;
     logger.info("server started");
-    Lzy::Async::NetSchdeler<int>::get_instance().run();
+    Lzy::Async::Net::Executer::get_instance().bindAndListen(11451);
+    Lzy::Async::NetScheduler::get_instance().run();
     //test();
     std::atomic<size_t> numOfClient = 0;
     std::atomic<size_t> numOfAcceptor{0};
